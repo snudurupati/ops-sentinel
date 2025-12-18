@@ -13,7 +13,7 @@ Aether is an autonomous agent designed to assist Site Reliability Engineers (SRE
 
 ```mermaid
 graph TD
-    User[👤 SRE User] -->|1. Reports Incident| UI[💻 Aether Dashboard (Streamlit)]
+    User[👤 SRE User] -->|1. Incident Report| UI["💻 Aether Dashboard (Streamlit)"]
     
     subgraph "Secure Enclave (Docker Container)"
         UI -->|2. Sends Prompt| Agent[🧠 LangChain Agent]
@@ -21,7 +21,7 @@ graph TD
         Agent -->|3. Decision Loop| Router{Determine Tool}
         
         Router -->|Need Metrics?| SQL[📊 SQL Tool]
-        Router -->|Need Knowledge?| RAG[📚 Vector Search (ChromaDB)]
+        Router -->|Need Knowledge?| RAG["📚 Vector Search (ChromaDB)"]
         
         SQL -->|Raw Data| DB[(SQLite DB)]
         RAG -->|Raw Text| VDB[(Runbooks)]
