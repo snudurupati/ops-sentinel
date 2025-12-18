@@ -1,76 +1,81 @@
-# Ops-Sentinel 🛡️
-### The Autonomous Site Reliability Engineer (SRE)
+# 💠 Aether: Autonomous SRE Agent
 
-**Ops-Sentinel** is an intelligent agent designed to autonomously investigate infrastructure incidents. It bridges the gap between structured telemetry (SQL logs) and unstructured institutional knowledge (Runbooks/Docs) to reduce Mean Time to Resolution (MTTR).
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED)
+![Status](https://img.shields.io/badge/Status-Prototype-green)
+![Security](https://img.shields.io/badge/Security-PII%20Redacted-red)
 
-Unlike generic chatbots, Ops-Sentinel uses the **Model Context Protocol (MCP)** to safely interact with production systems, ensuring security and "human-in-the-loop" authorization.
+> **"The Self-Healing Infrastructure Layer."**
 
----
+Aether is an autonomous agent designed to assist Site Reliability Engineers (SREs) by reducing the Mean Time To Resolution (MTTR) for infrastructure incidents. It combines **SQL-based telemetry analysis** with **semantic search over runbooks** to diagnose issues without human intervention.
 
 ## 🏗️ Architecture
 
-![Architecture Diagram](https://placehold.co/600x400?text=Architecture+Diagram+Placeholder)
-
-The system operates on three layers:
-1.  **The Brain (Agent):** Orchestrates the investigation using LangChain/AI Agents.
-2.  **The Protocol (MCP):** A standardized interface connecting the AI to:
-    * **Structured Data:** SQLite/Postgres (Metrics, Logs, Deployments).
-    * **Unstructured Data:** Vector DB (Runbooks, Post-Mortems).
-3.  **The Interface (UI):** A Streamlit dashboard for interactive debugging and authorization.
+```mermaid
+graph TD
+    User[👤 SRE User] -->|1. Reports Incident| UI[💻 Aether Dashboard (Streamlit)]
+    
+    subgraph "Secure Enclave (Docker Container)"
+        UI -->|2. Sends Prompt| Agent[🧠 LangChain Agent]
+        
+        Agent -->|3. Decision Loop| Router{Determine Tool}
+        
+        Router -->|Need Metrics?| SQL[📊 SQL Tool]
+        Router -->|Need Knowledge?| RAG[📚 Vector Search (ChromaDB)]
+        
+        SQL -->|Raw Data| DB[(SQLite DB)]
+        RAG -->|Raw Text| VDB[(Runbooks)]
+        
+        DB -->|4. Return Data| PII[🛡️ PII Redaction Layer]
+        VDB -->|4. Return Docs| PII
+        
+        PII -->|5. Sanitized Data| Agent
+    end
+    
+    Agent -->|6. Final Diagnosis| UI
+    
+    style PII fill:#ffcccc,stroke:#ff0000,stroke-width:2px,stroke-dasharray: 5 5
+    style Agent fill:#e1f5fe,stroke:#01579b
+```
 
 ## 🚀 Key Features
 
-* **Automated Root Cause Analysis:** Correlates CPU spikes with deployment events automatically.
-* **Context-Aware Remediation:** Retrieves the *exact* runbook command needed to fix a specific error.
-* **Safe Execution:** Uses a "Read-Only" mode by default; sensitive commands require human approval.
-* **Privacy-First:** PII redaction layer prevents sensitive log data from leaking to the LLM.
+* **🧠 Autonomous Reasoning Loop:** Uses Chain-of-Thought (CoT) to plan investigations (Schema Check → Query Metrics → Search Runbooks).
+* **🛡️ PII Redaction Middleware:** Custom regex-based firewall that intercepts all database outputs to strip Emails, API Keys, and SSNs before they reach the LLM context window.
+* **📊 Multi-Modal Investigation:** Correlates structured time-series data (SQLite) with unstructured institutional knowledge (ChromaDB).
+* **🐳 Production Ready:** Fully containerized with Docker for consistent deployment.
+
+## ⚡ Quick Start (Docker)
+
+The fastest way to run Aether is via Docker.
+
+**1. Clone the repository**
+
+git clone [https://github.com/snudurupati/ops-sentinel.git](https://github.com/snudurupati/ops-sentinel.git)
+cd ops-sentinel
+
+**2. Build the Image**
+
+docker build -t ops-sentinel:v1 .
+
+**3. Run the Container**
+*(Requires an OpenAI API Key)*
+
+docker run -p 8501:8501 -e OPENAI_API_KEY="sk-..." ops-sentinel:v1
+
+**4. Access the Dashboard**
+Navigate to `http://localhost:8501`
 
 ## 🛠️ Tech Stack
 
-* **Language:** Python 3.10+
-* **AI Orchestration:** LangChain / PydanticAI
-* **Protocol:** Model Context Protocol (MCP)
-* **Database:** SQLite (Structured), ChromaDB (Vector)
-* **Observability:** OpenTelemetry / Arize Phoenix
-* **Frontend:** Streamlit
+* **Orchestration:** LangChain / LangGraph
+* **Interface:** Streamlit (Custom CSS)
+* **Database:** SQLite (Metrics), ChromaDB (Vector Store)
+* **LLM:** GPT-4o-mini
+* **Infrastructure:** Docker, Python 3.12
 
-## ⚡ Quick Start
+## 🔮 Future Roadmap (V2)
 
-### 1. Installation
-
-    git clone https://github.com/yourusername/ops-sentinel.git
-    cd ops-sentinel
-    python -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
-    pip install -r requirements.txt
-
-### 2. Setup Environment
-Create a `.env` file in the root directory:
-
-    OPENAI_API_KEY=sk-your-key-here
-
-### 3. Generate Mock Data (The "World Builder")
-Initialize the database with synthetic telemetry logs and incident runbooks:
-
-    python generate_data.py
-
-*This creates `data/sre_observability.db` and populates the `knowledge_base/` folder.*
-
-### 4. Run the Agent
-*(Coming Soon...)*
-
-## 📂 Repository Structure
-
-    ops-sentinel/
-    ├── generate_data.py         # Synthetic data generator (Logs + Runbooks)
-    ├── data/                    # (Generated) Data directory
-    │   └── sre_observability.db # (Generated) Structured Metrics DB
-    ├── knowledge_base/          # (Generated) Markdown Runbooks
-    ├── src/                     # Core Application Logic
-    │   ├── agent.py             # Agent Logic
-    │   └── mcp_server.py        # Tool Definitions
-    ├── frontend/                # Streamlit Dashboard
-    └── tests/                   # Eval Harness
-
----
-*Built as a strategic demonstration of Agentic Data Engineering.*
+* [ ] **OpenTelemetry Integration:** Distributed tracing for agent decision steps.
+* [ ] **Human-in-the-Loop:** Approval workflow before executing write operations (e.g., restarting pods).
+* [ ] **RBAC:** Role-Based Access Control via OAuth2.
