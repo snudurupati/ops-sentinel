@@ -54,7 +54,7 @@ Initialize the database with synthetic telemetry logs and incident runbooks:
 
     python generate_data.py
 
-*This creates `sre_observability.db` and populates the `knowledge_base/` folder.*
+*This creates `data/sre_observability.db` and populates the `knowledge_base/` folder.*
 
 ### 4. Run the Agent
 *(Coming Soon...)*
@@ -63,7 +63,8 @@ Initialize the database with synthetic telemetry logs and incident runbooks:
 
     ops-sentinel/
     ├── generate_data.py         # Synthetic data generator (Logs + Runbooks)
-    ├── sre_observability.db     # (Generated) Structured Metrics DB
+    ├── data/                    # (Generated) Data directory
+    │   └── sre_observability.db # (Generated) Structured Metrics DB
     ├── knowledge_base/          # (Generated) Markdown Runbooks
     ├── src/                     # Core Application Logic
     │   ├── agent.py             # Agent Logic

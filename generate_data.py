@@ -4,12 +4,16 @@ import os
 from datetime import datetime, timedelta
 
 # --- Configuration ---
-DB_NAME = "sre_observability.db"
+DB_NAME = "data/sre_observability.db"
 KNOWLEDGE_DIR = "knowledge_base"
 INCIDENT_TIME_HOUR = 14  # The incident happens at 2:00 PM (14:00)
 
 # --- 1. Setup SQLite Database (Structured Data) ---
 def setup_database():
+    db_dir = os.path.dirname(DB_NAME)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+
     if os.path.exists(DB_NAME):
         os.remove(DB_NAME)
     
