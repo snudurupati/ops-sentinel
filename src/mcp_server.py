@@ -17,10 +17,25 @@ def list_tables_tool():
 def query_metrics_tool(query: str):
     """
     Executes a SQL query against the metrics database.
-    Use this to retrieve numeric data like CPU usage, error rates, or deployment times.
-    The query must be read-only (SELECT only).
+    Useful for finding 'cpu_percent', 'memory_usage', or 'error_rate'.
     """
-    return execute_query(query) 
+    try:
+        # 1. Run the query
+        results = fetch_metrics(query)
+        
+        # 2. 🔒 GUARDRAIL: Redact PII from DB rows
+        # (Assuming results is a list of tuples/dicts)
+        clean_results = [redactor.redact(str(row)) for row in results]
+        
+        # 3. 🔧 FIX: Convert the list to a single string block
+        # If the list is empty, say "No results"
+        if not clean_results:
+            return "Query returned no results."
+            
+        return "\n".join(clean_results)
+
+    except Exception as e:
+        return f"Database Error: {str(e)}"
 
 # ---Tool 3: The Runbook Searcher ---
 @tool

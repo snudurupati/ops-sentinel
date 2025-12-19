@@ -2,7 +2,7 @@ import os
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import CharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from dotenv import load_dotenv
 
 load_dotenv()   # Load environment variables from .env file
@@ -44,15 +44,28 @@ def get_vector_db():
     """Returns the existing ChromaDB Instance."""
     return Chroma(persist_directory=CHROMA_PATH, embedding_function=OpenAIEmbeddings())
     
-def search_runbooks(query: str, k: int = 2):
-    """Searches the Vector DBfor the most similar runbooks to the query."""
+def search_runbooks(query: str, k: int = 1): # <--- 1. Change default to 1
+    """Searches the Vector DB for the most similar runbooks."""
     vector_db = get_vector_db()
     if not vector_db:
-        print("❌ ChromaDB not initialized. Please run initialize_vector_db() first.")
-        return None
+        print("❌ ChromaDB not initialized.")
+        return ["System Error: Vector DB not ready."]
     
-    results = vector_db.similarity_search(query, k=k)
-    return [doc.page_content for doc in results]
+    # 2. Force k=1 even if the agent asks for more (Safety Cap)
+    safe_k = min(k, 1)
+    
+    results = vector_db.similarity_search(query, k=safe_k)
+    
+    # 3. CRITICAL: Truncate content to 1,500 characters per result
+    # This ensures one search never burns more than ~500 tokens
+    clean_results = []
+    for doc in results:
+        content = doc.page_content
+        if len(content) > 1500:
+            content = content[:1500] + "... [truncated]"
+        clean_results.append(content)
+        
+    return clean_results
 
 # Quick test if running directly
 if __name__ == "__main__":

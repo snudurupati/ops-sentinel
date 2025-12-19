@@ -6,51 +6,38 @@ import time
 # --- 1. Path Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.agent import run_agent
-from langchain_core.messages import AIMessage, ToolMessage
+from src.instrumentation import setup_telemetry
+from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
 
-# --- 2. Brand Config: AETHER ---
-BRAND_NAME = "Aether"
-PAGE_TITLE = "Aether Intelligence"
-ICON = "💠"  # The official Logo
+# --- 2. Initialize Telemetry ---
+if "telemetry_setup" not in st.session_state:
+    setup_telemetry()
+    st.session_state.telemetry_setup = True
 
+# --- 3. Page Config & CSS (The V1 Polish) ---
 st.set_page_config(
-    page_title=PAGE_TITLE,
-    page_icon=ICON,
+    page_title="Aether: SRE Agent",
+    page_icon="💠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 3. APPLE / MATERIAL DESIGN CSS ---
+# Custom CSS for Apple/Material Design
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     
-    /* Base Settings */
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
-        font-size: 18px; 
     }
-    
-    .stApp { background-color: #F5F5F7; }
     
     /* Sidebar Branding */
     .sidebar-brand {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        padding-bottom: 20px;
-        border-bottom: 1px solid #E5E5EA;
-        margin-bottom: 20px;
+        display: flex; align-items: center; gap: 15px; padding-bottom: 20px;
+        border-bottom: 1px solid #E5E5EA; margin-bottom: 20px;
     }
-    .sidebar-logo {
-        font-size: 2.5rem;
-    }
-    .sidebar-text {
-        font-size: 2rem;
-        font-weight: 800;
-        letter-spacing: -0.5px;
-        color: #1d1d1f;
-    }
+    .sidebar-logo { font-size: 2.5rem; }
+    .sidebar-text { font-size: 2rem; font-weight: 800; color: #1d1d1f; letter-spacing: -0.5px; }
     
     /* Metrics Cards */
     .metric-card {
@@ -66,18 +53,7 @@ st.markdown("""
         background: -webkit-linear-gradient(45deg, #2c3e50, #4ca1af);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0;
     }
-    .hero-subtitle {
-        font-size: 1.3rem;
-        color: #86868b;
-        margin-bottom: 20px;
-        font-weight: 400;
-    }
-    
-    /* Chat Message Styling */
-    .stChatMessage .stMarkdown p {
-        font-size: 1.1rem !important;
-        line-height: 1.6;
-    }
+    .hero-subtitle { font-size: 1.3rem; color: #86868b; margin-bottom: 20px; font-weight: 400; }
     
     /* Status Pills */
     .status-pill {
@@ -85,129 +61,116 @@ st.markdown("""
         background-color: #E8F5E9; color: #2E7D32; border-radius: 20px;
         font-size: 0.9rem; font-weight: 600; margin-right: 10px;
     }
-    
-    /* Button Styling */
-    .stButton>button {
-        background-color: white; color: #1d1d1f; border: 1px solid #d2d2d7;
-        border-radius: 8px; font-weight: 600; font-size: 1rem;
-        width: 100%; transition: all 0.2s; padding: 0.6rem;
-    }
-    .stButton>button:hover {
-        border-color: #0071e3; color: #0071e3; background-color: #f5f5f7;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. Sidebar: THE CONTROL CENTER ---
+# --- 4. Sidebar: Control Center ---
 with st.sidebar:
-    # 🔹 BRANDING HEADER
-    st.markdown(f"""
+    st.markdown("""
     <div class="sidebar-brand">
-        <span class="sidebar-logo">{ICON}</span>
-        <span class="sidebar-text">{BRAND_NAME}</span>
+        <span class="sidebar-logo">💠</span>
+        <span class="sidebar-text">Aether</span>
     </div>
     """, unsafe_allow_html=True)
     
-    st.caption("v2.4.0 • Enterprise Edition")
+    st.caption("v2.5.0 • Enterprise Edition")
     
     # Live Metrics
     col1, col2 = st.columns(2)
     with col1:
         st.markdown('<div class="metric-card"><div class="metric-label">Latency</div><div class="metric-value">12ms</div></div>', unsafe_allow_html=True)
     with col2:
-        st.markdown('<div class="metric-card"><div class="metric-label">Errors</div><div class="metric-value">0.01%</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="metric-card"><div class="metric-label">Errors</div><div class="metric-value">0.0%</div></div>', unsafe_allow_html=True)
         
     st.markdown("---")
-    
-    # SCENARIO LAUNCHER
     st.markdown("**⚡ ACTIVE INCIDENTS**")
-    st.caption("Select a live alert to auto-investigate:")
     
-    if st.button("🔥 Payment API: High Latency"):
-        st.session_state.messages.append({"role": "user", "content": "Alert: Payment API latency is spiking > 500ms. Investigate logs and runbooks."})
-        st.rerun()
-        
-    if st.button("🔒 Auth Service: DB Locks"):
-        st.session_state.messages.append({"role": "user", "content": "Alert: Auth Service is timing out. Check for database locks or deadlocks."})
-        st.rerun()
-        
-    if st.button("💾 Storage: Volume Capacity"):
-        st.session_state.messages.append({"role": "user", "content": "Warning: Disk usage on Log-Cluster-01 is at 92%. Suggest remediation."})
-        st.rerun()
+    # Preset Scenarios
+    # 1. Payment API (Original)
+    if st.button("🔥 Payment API: High Latency", use_container_width=True):
+        st.session_state.prompt_trigger = "I am seeing high CPU on the Payment-API. Can you investigate logs and runbooks?"
+    
+    # 2. Auth Service (Original)
+    if st.button("🔒 Auth Service: Locks", use_container_width=True):
+        st.session_state.prompt_trigger = "Auth Service is timing out. Check for database locks."
 
-# --- 5. Main Area ---
+    # 3. Kafka Lag (New)
+    if st.button("📨 Kafka: Consumer Lag", use_container_width=True):
+        st.session_state.prompt_trigger = "Kafka consumer group 'order-processing' is lagging behind by 50,000 messages. Investigate throughput and errors."
 
-# Header
-st.markdown(f'<div class="hero-title">{BRAND_NAME} Intelligence</div>', unsafe_allow_html=True)
+    # 4. Kubernetes Crash (New)
+    if st.button("☸️ K8s: Pod CrashLoop", use_container_width=True):
+        st.session_state.prompt_trigger = "The 'inventory-service' pods are in CrashLoopBackOff. Check the termination logs and resource limits."
+
+    # 5. Redis Miss (New)
+    if st.button("🧠 Redis: High Miss Rate", use_container_width=True):
+        st.session_state.prompt_trigger = "Cache miss rate on the 'user-profile' cluster jumped to 40%. Investigate eviction policies and memory usage."
+
+# --- 5. Main UI ---
+st.markdown('<div class="hero-title">Aether Intelligence</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-subtitle">Autonomous Site Reliability Engineering (SRE) Agent</div>', unsafe_allow_html=True)
 
-# Status Bar
 st.markdown("""
 <div style="display: flex; align-items: center; margin-bottom: 20px;">
-    <span class="status-pill">● System Operational</span>
+    <span class="status-pill">● System Online</span>
     <span class="status-pill" style="background-color: #FFF3E0; color: #E65100;">🔒 PII Redaction Active</span>
 </div>
 """, unsafe_allow_html=True)
 
-# --- 6. Chat Logic ---
-
+# --- 6. Chat Logic (The Brain) ---
 if "messages" not in st.session_state:
-    st.session_state.messages = []
-    st.session_state.messages.append({
+    st.session_state.messages = [{
         "role": "assistant", 
         "content": "Good morning. I am Aether. I'm monitoring 142 services. Select an incident from the sidebar or type a query to begin."
-    })
+    }]
 
 # Display History
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Input Handling
-if prompt := st.chat_input("Ask Aether to investigate..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.rerun()
+# Handle Inputs (Sidebar Button OR Text Input)
+user_input = None
+if "prompt_trigger" in st.session_state and st.session_state.prompt_trigger:
+    user_input = st.session_state.prompt_trigger
+    del st.session_state.prompt_trigger # Clear it
+elif prompt := st.chat_input("Ask Aether to investigate..."):
+    user_input = prompt
 
-# --- 7. AGENT EXECUTION (WITH VISIBLE BRAIN) ---
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-    
-    user_input = st.session_state.messages[-1]["content"]
+# --- 7. Execution Loop ---
+if user_input:
+    # 1. Add User Message
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.markdown(user_input)
 
+    # 2. Assistant Acts
     with st.chat_message("assistant"):
-        # EXPANDED=TRUE makes sure it stays open!
+        # The "Thinking" Status Container
         with st.status("🧠 Neural Engine Processing...", expanded=True) as status:
             try:
-                # 1. Run the Agent (Expects return of the full response dict)
-                response = run_agent(user_input)
+                # Call V2 Agent (Returns Report + History)
+                final_report, history = run_agent(user_input)
                 
-                # 2. Parse the steps for the UI
-                if isinstance(response, dict) and "messages" in response:
-                    messages = response["messages"]
-                    final_answer = messages[-1].content
-                    
-                    # Iterate through intermediate steps to show "Thoughts"
-                    for msg in messages:
-                        if isinstance(msg, AIMessage) and msg.tool_calls:
-                            for tool in msg.tool_calls:
-                                st.write(f"🛠️ **Activating Tool:** `{tool['name']}`")
-                                st.code(f"Arguments: {tool['args']}")
-                                time.sleep(0.3) # Fake delay for dramatic effect
-                        elif isinstance(msg, ToolMessage):
-                            with st.expander(f"📄 Result from {msg.name}"):
-                                st.code(msg.content[:500] + "...") # Truncate long logs
+                # Render the Thoughts (The "Replay" Strategy)
+                for msg in history:
+                    if isinstance(msg, AIMessage) and msg.tool_calls:
+                        for tool in msg.tool_calls:
+                            st.write(f"🛠️ **Activating Tool:** `{tool['name']}`")
+                            st.code(f"Arguments: {tool['args']}")
+                            time.sleep(0.2) # Cinematic delay
+                    elif isinstance(msg, ToolMessage):
+                        with st.expander(f"📄 Result from {msg.name}"):
+                            st.code(msg.content[:500] + "...")
                 
-                    # KEEPS THE STATUS EXPANDED
-                    status.update(label="✅ Analysis Complete", state="complete", expanded=True)
-                    
-                    # 3. Display Final Answer
-                    st.markdown(f"### 🛡️ Incident Report\n{final_answer}")
-                    st.session_state.messages.append({"role": "assistant", "content": final_answer})
+                status.update(label="✅ Investigation Complete", state="complete", expanded=True)
                 
-                else:
-                    # Fallback
-                    st.markdown(response)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                    status.update(label="✅ Complete", state="complete", expanded=True)
+                # Render Final Pydantic Report
+                final_markdown = final_report.to_markdown()
+                st.markdown(final_markdown)
+                
+                # Save to history so it stays after refresh
+                st.session_state.messages.append({"role": "assistant", "content": final_markdown})
 
             except Exception as e:
                 status.update(label="❌ Error", state="error")
