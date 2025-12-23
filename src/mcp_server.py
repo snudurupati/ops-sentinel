@@ -21,7 +21,7 @@ def query_metrics_tool(query: str):
     """
     try:
         # 1. Run the query
-        results = fetch_metrics(query)
+        results = execute_query(query)
         
         # 2. 🔒 GUARDRAIL: Redact PII from DB rows
         # (Assuming results is a list of tuples/dicts)
@@ -41,17 +41,27 @@ def query_metrics_tool(query: str):
 @tool
 def search_runbooks_tool(query: str):
     """
-    Searches the internal SRE runbooks and post-mortems for semantic matches.
-    Use this when diagnosing errors (e.g., 'Error 503', 'Connection Refused') 
-    to find known fixes.
+    Searches the internal SRE runbooks for troubleshooting steps.
     """
-    results = search_runbooks(query)
-    
-    # 🔒 GUARDRAIL: Redact PII
-    clean_results = [redactor.redact(doc) for doc in results]
-    
-    # 🔧 FIX: Join the list into a single string so the Agent can read it
-    return "\n\n---\n\n".join(clean_results)
-
+    try:
+        # 1. Get results (standard vector search)
+        results = search_runbooks(query)
+        
+        # 2. Redact PII (Security best practice)
+        clean_results = [redactor.redact(doc) for doc in results]
+        
+        # 3. Join them into one big string
+        full_text = "\n\n---\n\n".join(clean_results)
+        
+        # 4. SAFETY CAP: Limit to 8,000 characters (~2,000 tokens)
+        # This prevents 429 errors if a runbook is massive.
+        if len(full_text) > 8000:
+            return full_text[:8000] + "\n... [TRUNCATED] ..."
+            
+        return full_text
+        
+    except Exception as e:
+        return f"Search Error: {str(e)}"
+        
 # Registry of all tools
 ALL_TOOLS = [list_tables_tool, query_metrics_tool, search_runbooks_tool]

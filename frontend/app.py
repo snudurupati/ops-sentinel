@@ -88,23 +88,23 @@ with st.sidebar:
     # Preset Scenarios
     # 1. Payment API (Original)
     if st.button("🔥 Payment API: High Latency", use_container_width=True):
-        st.session_state.prompt_trigger = "I am seeing high CPU on the Payment-API. Can you investigate logs and runbooks?"
+        st.session_state.prompt_trigger = "I am seeing high CPU on the Payment-API. Check Payment-API for CPU usage and investigate logs and runbooks?"
     
     # 2. Auth Service (Original)
     if st.button("🔒 Auth Service: Locks", use_container_width=True):
-        st.session_state.prompt_trigger = "Auth Service is timing out. Check for database locks."
+        st.session_state.prompt_trigger = "Auth Service is timing out. Check Auth Service for database locks."
 
     # 3. Kafka Lag (New)
     if st.button("📨 Kafka: Consumer Lag", use_container_width=True):
-        st.session_state.prompt_trigger = "Kafka consumer group 'order-processing' is lagging behind by 50,000 messages. Investigate throughput and errors."
+        st.session_state.prompt_trigger = "Kafka consumer group 'order-processing' is lagging behind by 50,000 messages. Check Kafka throughput and errors."
 
     # 4. Kubernetes Crash (New)
     if st.button("☸️ K8s: Pod CrashLoop", use_container_width=True):
-        st.session_state.prompt_trigger = "The 'inventory-service' pods are in CrashLoopBackOff. Check the termination logs and resource limits."
+        st.session_state.prompt_trigger = "The 'inventory-service' pods are in CrashLoopBackOff. Check pods termination logs and resource limits."
 
     # 5. Redis Miss (New)
     if st.button("🧠 Redis: High Miss Rate", use_container_width=True):
-        st.session_state.prompt_trigger = "Cache miss rate on the 'user-profile' cluster jumped to 40%. Investigate eviction policies and memory usage."
+        st.session_state.prompt_trigger = "Cache miss rate on the 'user-profile' cluster jumped to 40%. Check Redis eviction policies and memory usage."
 
 # --- 5. Main UI ---
 st.markdown('<div class="hero-title">Aether Intelligence</div>', unsafe_allow_html=True)
