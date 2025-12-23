@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  # 1. Your AI Agent Application
+  app:
+    build: .
+    container_name: aether-agent
+    ports:
+      - "8501:8501"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Point OTel to the Jaeger container
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_SERVICE_NAME=aether-v2
+    depends_on:
+      - jaeger
+
+  # 2. Jaeger (The Observability Backend)
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: aether-tracing
+    ports:
+      - "16686:16686" # The UI Dashboard
+      - "4317:4317" # OTLP Receiver (gRPC)
+      - "4318:4318" # OTLP Receiver (HTTP)
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411

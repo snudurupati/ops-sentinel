@@ -3,84 +3,128 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from src.mcp_server import ALL_TOOLS
 from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
+from src.models import IncidentReport
+import langchain
+from typing import Tuple, List
+from langchain_core.messages import BaseMessage
+from tenacity import retry, stop_after_attempt, wait_random_exponential
+from langchain_community.cache import InMemoryCache
+
+langchain.debug = True
 
 load_dotenv()       
 
+# --- 2. SWITCH TO IN-MEMORY CACHE ---
+# This fixes the "Database Locked" loop.
+
+print("✅ Setting up In-Memory Cache (RAM)")
+try:
+    from langchain.globals import set_llm_cache
+    set_llm_cache(InMemoryCache())
+except ImportError:
+    langchain.llm_cache = InMemoryCache()
+
+
 # 1. Initialize the LLM
-llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0) 
+llm = ChatOpenAI(
+    model_name="gpt-4o", 
+    temperature=0,
+    max_retries=5, 
+    request_timeout=60
+) 
 
-# 2. Define the System Prompt (The "Personality")
-prompt = """
+# --- RETRY DECORATOR ---
+# Accepts 'agent' as an argument to support JIT creation
+@retry(wait=wait_random_exponential(multiplier=1, max=60), stop=stop_after_attempt(5))
+def invoke_agent_with_retry(agent, query, callbacks):
+    return agent.invoke({"input": query}, config={"callbacks": callbacks})
+
+# --- MAIN FUNCTION ---
+def run_agent(user_query: str, callbacks=None) -> Tuple[IncidentReport, List[BaseMessage]]:
+    """
+    Returns: (IncidentReport, List of raw messages for debugging)
+    """
+    print(f"🕵️‍♂️ Agent Investigation Started: {user_query}")
+
+    # 1. DYNAMIC PROMPT GENERATION (JIT)
+    # We inject the USER QUERY directly into the system instructions.
+    # This prevents the LLM from ignoring the input or overfitting to examples.
+    
+    dynamic_prompt = f"""
 You are an expert Site Reliability Engineer (SRE) named 'Ops-Sentinel'.
-Your goal is to diagnose infrastructure incidents by combining:
-1. Structured Telemetry (SQL Metrics)
-2. Unstructured Knowledge (Runbooks)
 
-CRITICAL INSTRUCTIONS:
-- You are an AUTONOMOUS agent. Do not ask the user for permission to run queries.
-- If the user asks you to investigate, you must perform the ENTIRE investigation in one go.
+CRITICAL CONTEXT:
+The user is reporting an issue. Read their exact words below:
+" **{user_query}** "
+
+YOUR MISSION:
+1. **EXTRACT**: Identify the specific service name mentioned in the user's words above (e.g., 'Payment-API', 'Auth', 'Kafka').
+   - If the text says "I am seeing high CPU on the Payment-API", the target is "Payment-API".
+   - Ignore words like "I", "am", "seeing", "check". Focus on the System/Service noun.
+
+2. **INVESTIGATE**: Once you have the target name, run the investigation tools.
+
+RULES:
 - STEP 1: Check the database schema (list_tables_tool).
-- STEP 2: IMMEDIATELY write and execute a SQL query to check the logs (query_metrics_tool).
-    - Hint: Use 'SELECT * FROM metrics WHERE ...'
-- STEP 3: If you see errors or high CPU, IMMEDIATELY search the runbooks (search_runbooks_tool).
-- STEP 4: Synthesize the findings into a final answer.
+- STEP 2: GENERATE SQL.
+    - **Constraint**: You must join `metrics` and `services`.
+    - **SQL Template**: 
+      `SELECT m.* FROM metrics m JOIN services s ON m.service_id = s.id WHERE lower(s.name) LIKE '%<INSERT_TARGET_NAME_HERE>%' ORDER BY m.timestamp DESC LIMIT 50`
+    - **CRITICAL**: Replace `<INSERT_TARGET_NAME_HERE>` with the name you extracted from the user's words.
+- STEP 3: Execute the query (query_metrics_tool).
+- STEP 4: If you see errors or performance anomalies, search runbooks (search_runbooks_tool).
+- STEP 5: Synthesize the findings into a final answer.
 
 Do NOT stop after Step 1. Keep going until you have the answer.
 """
-
-# 3. Create the Agent
-#Using OpenAI specific constructor
-agent = create_agent(model=llm, tools=ALL_TOOLS, system_prompt=prompt)
-
-
-def run_agent(user_query: str):
-    """Entry point for the frontend to call the agent."""
-    response = agent.invoke({"input": user_query})
-    return response
-
-def print_thought_process(response):
-    """
-    Iterates through the agent's message history to print the thought process.
-    """
-    messages = response.get("messages", [])
     
-    print("\n------------------ AGENT THOUGHT PROCESS ------------------\n")
+    # 2. Create the JIT Agent (Fresh Brain for every request)
+    # We pass the custom dynamic prompt here.
+    agent = create_agent(model=llm, tools=ALL_TOOLS, system_prompt=dynamic_prompt)
     
-    for msg in messages:
-        # 1. The User's Input
-        if isinstance(msg, HumanMessage):
-            print(f"👤 User: {msg.content}\n")
-            
-        # 2. The Agent's Decisions (Thoughts & Tool Calls)
-        elif isinstance(msg, AIMessage):
-            # If the agent decided to call a tool
-            if msg.tool_calls:
-                for tool_call in msg.tool_calls:
-                    print(f"🧠 Thought: I need to call '{tool_call['name']}'")
-                    print(f"   Args: {tool_call['args']}\n")
-            # If the agent has a final text response
-            elif msg.content:
-                print(f"🤖 Final Answer: {msg.content}\n")
-                
-        # 3. The Tool's Output (Observations)
-        elif isinstance(msg, ToolMessage):
-            # Truncate long outputs for readability
-            content = str(msg.content)
-            if len(content) > 500:
-                content = content[:500] + "... (truncated)"
-            print(f"🛠️ Tool Output ({msg.name}): {content}\n")
-            
-    print("-----------------------------------------------------------\n")
+    # 3. Run the Agent (Protected by Tenacity)
+    try:
+        response_dict = invoke_agent_with_retry(agent, user_query, callbacks)
+    except Exception as e:
+        print(f"❌ All retries failed: {e}")
+        raise e
+    
+    # 4. Capture the history
+    messages = response_dict.get("messages", [])
+    
+    # 5. Extract final text
+    investigation_notes = "No data."
+    if messages and isinstance(messages[-1], AIMessage):
+        investigation_notes = messages[-1].content
+
+    # 6. Structure the output
+    print("🏗️ Structuring final report...")
+    structure_llm = llm.with_structured_output(IncidentReport)
+    
+    final_report = structure_llm.invoke(
+        f"""
+        You are a Senior Site Reliability Engineer. 
+        Based on the raw investigation notes below, create a formal Incident Report.
+        
+        RAW INVESTIGATION NOTES:
+        {investigation_notes}
+        """
+    )
+    
+    return final_report, messages
 
 # --- Quick Test ---
 if __name__ == "__main__":
-    print("🤖 Ops-Sentinel is waking up...")
+    print("🤖 Ops-Sentinel V2 is waking up...")
     
-    test_query = "I am seeing high CPU on the Payment-API. Can you investigate logs from the last hour and check if there are any runbooks for this?"
+    # Test with the sentence that broke the previous version
+    test_query = "Auth Service is timing out. Check Auth Service for database locks."
+    #"I am seeing high CPU on the Payment-API. Check Payment-API for CPU usage and investigate logs and runbooks?"
     
-    # Run the agent (returns the full dictionary)
-    response = agent.invoke({"input": test_query})
+    report, messages = run_agent(test_query)
     
-    # Print the beautiful step-by-step logic
-    print_thought_process(response)
-
+    print("\n--- 📝 FINAL STRUCTURED REPORT ---")
+    print(report.to_markdown())
+    
+    print("\n--- 💾 RAW Agent Logs ---")
+    print(messages)
