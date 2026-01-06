@@ -1,3 +1,5 @@
+import os
+import yaml
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI 
 from langchain.agents import create_agent
@@ -33,6 +35,15 @@ llm = ChatOpenAI(
     request_timeout=60
 ) 
 
+# --- HELPER: LOAD PROMPTS ---
+def load_config(file_path="config/prompts.yaml"):
+    """Loads the YAML configuration file."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Configuration file not found: {file_path}")
+    
+    with open(file_path, "r") as f:
+        return yaml.safe_load(f)
+
 # --- RETRY DECORATOR ---
 # Accepts 'agent' as an argument to support JIT creation
 @retry(wait=wait_random_exponential(multiplier=1, max=60), stop=stop_after_attempt(5))
@@ -50,37 +61,20 @@ def run_agent(user_query: str, callbacks=None) -> Tuple[IncidentReport, List[Bas
     # We inject the USER QUERY directly into the system instructions.
     # This prevents the LLM from ignoring the input or overfitting to examples.
     
-    dynamic_prompt = f"""
-You are an expert Site Reliability Engineer (SRE) named 'Ops-Sentinel'.
+    # We load the "code" (logic) separate from the "prompt" (data)
+    config = load_config("config/prompts.yaml")
+    raw_prompt_template = config.get("agent_system_prompt")
+    
+    if not raw_prompt_template:
+        raise ValueError("Key 'agent_system_prompt' missing in prompts.yaml")
 
-CRITICAL CONTEXT:
-The user is reporting an issue. Read their exact words below:
-" **{user_query}** "
-
-YOUR MISSION:
-1. **EXTRACT**: Identify the specific service name mentioned in the user's words above (e.g., 'Payment-API', 'Auth', 'Kafka').
-   - If the text says "I am seeing high CPU on the Payment-API", the target is "Payment-API".
-   - Ignore words like "I", "am", "seeing", "check". Focus on the System/Service noun.
-
-2. **INVESTIGATE**: Once you have the target name, run the investigation tools.
-
-RULES:
-- STEP 1: Check the database schema (list_tables_tool).
-- STEP 2: GENERATE SQL.
-    - **Constraint**: You must join `metrics` and `services`.
-    - **SQL Template**: 
-      `SELECT m.* FROM metrics m JOIN services s ON m.service_id = s.id WHERE lower(s.name) LIKE '%<INSERT_TARGET_NAME_HERE>%' ORDER BY m.timestamp DESC LIMIT 50`
-    - **CRITICAL**: Replace `<INSERT_TARGET_NAME_HERE>` with the name you extracted from the user's words.
-- STEP 3: Execute the query (query_metrics_tool).
-- STEP 4: If you see errors or performance anomalies, search runbooks (search_runbooks_tool).
-- STEP 5: Synthesize the findings into a final answer.
-
-Do NOT stop after Step 1. Keep going until you have the answer.
-"""
+    # INJECT VARIABLES
+    # We use standard Python formatting to inject the user query into the YAML template
+    formatted_system_prompt = raw_prompt_template.format(user_query=user_query)
     
     # 2. Create the JIT Agent (Fresh Brain for every request)
     # We pass the custom dynamic prompt here.
-    agent = create_agent(model=llm, tools=ALL_TOOLS, system_prompt=dynamic_prompt)
+    agent = create_agent(model=llm, tools=ALL_TOOLS, system_prompt=formatted_system_prompt)
     
     # 3. Run the Agent (Protected by Tenacity)
     try:
