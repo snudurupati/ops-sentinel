@@ -36,12 +36,24 @@ llm = ChatOpenAI(
 ) 
 
 # --- HELPER: LOAD PROMPTS ---
-def load_config(file_path="config/prompts.yaml"):
-    """Loads the YAML configuration file."""
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Configuration file not found: {file_path}")
+def load_config(file_name):
+    """
+    Loads YAML from the project root 'config' directory.
+    Context: This script is in 'src/', so we must go UP one level.
+    """
+    # 1. Get the directory where THIS script (agent.py) lives (e.g., /project/src)
+    src_dir = os.path.dirname(os.path.abspath(__file__))
     
-    with open(file_path, "r") as f:
+    # 2. Go UP one level to the project root (e.g., /project)
+    project_root = os.path.dirname(src_dir)
+    
+    # 3. Build path to config (e.g., /project/config/prompts.yaml)
+    config_path = os.path.join(project_root, "config", file_name)
+    
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found at: {config_path}")
+    
+    with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
 # --- RETRY DECORATOR ---
@@ -51,7 +63,7 @@ def invoke_agent_with_retry(agent, query, callbacks):
     return agent.invoke({"input": query}, config={"callbacks": callbacks})
 
 # --- MAIN FUNCTION ---
-def run_agent(user_query: str, callbacks=None) -> Tuple[IncidentReport, List[BaseMessage]]:
+def run_agent(user_query: str, prompt_file: str = "prompts.yaml", callbacks=None) -> Tuple[IncidentReport, List[BaseMessage]]:
     """
     Returns: (IncidentReport, List of raw messages for debugging)
     """
@@ -62,7 +74,7 @@ def run_agent(user_query: str, callbacks=None) -> Tuple[IncidentReport, List[Bas
     # This prevents the LLM from ignoring the input or overfitting to examples.
     
     # We load the "code" (logic) separate from the "prompt" (data)
-    config = load_config("config/prompts.yaml")
+    config = load_config(prompt_file)
     raw_prompt_template = config.get("agent_system_prompt")
     
     if not raw_prompt_template:

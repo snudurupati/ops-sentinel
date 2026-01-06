@@ -78,6 +78,33 @@ The development of Aether involved solving critical production challenges common
     * **Tenacity Retries:** Applied exponential backoff decorators (`@retry`) to handle transient failures.
     * **Strict Ordering:** Enforced tool execution order (Schema → Metrics → Runbooks) via system prompt constraints.
 
+### 6. Dynamic Prompt Versioning
+* **The Problem:** Hardcoding system prompts made it impossible to iterate on prompt logic without redeploying code.
+* **The Solution:** Decoupled prompts into `config/*.yaml` files.
+    * The agent now supports a `prompt_file` parameter, enabling A/B testing between different reasoning strategies (e.g., `prompts.yaml` vs `prompts_V1_20260105.yaml`).
+
+## ⚖️ Automated Evaluation (LLM-as-Judge)
+
+To ensure the agent remains robust as prompt logic evolves, we've implemented an automated benchmarking suite in `evaluate.py`.
+
+* **Technique:** **LLM-as-Judge**.
+* **How it works:** 
+    1. A "Student" Agent runs a set of test cases.
+    2. The raw execution trace (tool calls and outputs) is captured.
+    3. A "Judge" (GPT-4o) evaluates the trace against a strict rubric of "Expected Behavior".
+    4. The Judge provides a 0-100 score, a Pass/Fail status, and detailed reasoning.
+* **Usage:**
+  ```bash
+  python evaluate.py
+  ```
+
+## 🧪 Expanded Testing Suite
+We have introduced granular test suites to validate specific agent capabilities:
+* `tests/test_memory.py`: Validates context retention across multiple turns.
+* `tests/test_reasoning.py`: Ensures correct tool sequencing (Schema → Metrics → Runbooks).
+* `tests/test_security.py`: Rigorous validation of the PII redaction layer.
+* `tests/test_ui.py`: Basic health checks for the Streamlit interface.
+
 ## ⚡ Quick Start (Docker)
 
 The fastest way to run Aether is via Docker.
@@ -109,10 +136,13 @@ Navigate to `http://localhost:8501`
 * **Observability:** OpenTelemetry (Jaeger Exporter)
 * **Database:** SQLite (Normalized Schema), ChromaDB (Vector Store)
 * **LLM:** GPT-4o / GPT-4o-mini
+* **Evaluation:** LLM-as-Judge (metrics tracking via `evaluate.py`)
 * **Infrastructure:** Docker, Python 3.12
-* **Reliability:** Tenacity (Retries), Pydantic (Data Validation)
+* **Reliability:** Tenacity (Retries), Pydantic (Data Validation), Tabulate (CLI Reports)
 
 ## 🔮 Future Roadmap (V2)
+
+* [x] **LLM-as-Judge:** Automated evaluation of reasoning traces.
 
 * [ ] **Human-in-the-Loop:** Approval workflow before executing write operations (e.g., restarting pods).
 * [ ] **GraphRAG:** Migrating from SQL Joins to a Graph Database (ArangoDB) for semantic relationship mapping.
