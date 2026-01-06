@@ -140,9 +140,7 @@ Navigate to `http://localhost:8501`
 * **Infrastructure:** Docker, Python 3.12
 * **Reliability:** Tenacity (Retries), Pydantic (Data Validation), Tabulate (CLI Reports)
 
-## 🔮 Future Roadmap (V2)
-
-* [x] **LLM-as-Judge:** Automated evaluation of reasoning traces.
+## 🔮 Future Roadmap (V3)
 
 * [ ] **Human-in-the-Loop:** Approval workflow before executing write operations (e.g., restarting pods).
 * [ ] **GraphRAG:** Migrating from SQL Joins to a Graph Database (ArangoDB) for semantic relationship mapping.

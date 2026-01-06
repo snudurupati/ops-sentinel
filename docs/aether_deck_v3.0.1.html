@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aether - Autonomous SRE Agent (v3)</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        :root {
+            /* AETHER THEME */
+            --primary: #06B6D4;       /* Cyan 500 */
+            --primary-dark: #0891B2;  /* Cyan 600 */
+            --secondary: #3B82F6;     /* Blue 500 */
+            --accent: #8B5CF6;        /* Violet */
+            --dark: #0F172A;          /* Slate 900 */
+            --text-main: #1E293B;     /* Slate 800 */
+            --text-light: #64748B;    /* Slate 500 */
+            --bg-page: #334155;       /* Slate 700 */
+            --surface: #FFFFFF;
+            --border: #E2E8F0;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-page);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* SLIDE CONTAINER */
+        .slide-container {
+            width: 1100px;  /* 16:9 Aspect Ratio */
+            height: 618px; 
+            background-color: var(--surface);
+            position: relative;
+            overflow: hidden;
+            display: none; 
+            flex-direction: column;
+            padding: 40px 60px;
+            margin-bottom: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        }
+
+        .slide-container.active { display: flex; }
+
+        /* EDITABLE TEXT */
+        [contenteditable="true"] { outline: none; border: 1px dashed transparent; transition: border 0.2s; }
+        [contenteditable="true"]:hover { border-bottom: 1px dashed #94A3B8; background: rgba(241, 245, 249, 0.5); }
+
+        /* BRAND STRIP */
+        .brand-strip {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 6px;
+            background: linear-gradient(90deg, var(--secondary), var(--primary));
+        }
+
+        /* TYPOGRAPHY */
+        h1 { font-size: 48px; font-weight: 700; color: var(--dark); margin-bottom: 20px; line-height: 1.1; letter-spacing: -1px; }
+        h2 { font-size: 32px; font-weight: 600; color: var(--dark); margin-bottom: 25px; position: relative; display: inline-block; letter-spacing: -0.5px; }
+        h2::after { content: ''; position: absolute; bottom: -8px; left: 0; width: 40px; height: 3px; background: var(--primary); border-radius: 2px; }
+        h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; color: var(--text-main); }
+        p, li { font-size: 15px; line-height: 1.5; color: var(--text-light); margin-bottom: 12px; }
+        .subtitle { font-size: 24px; font-weight: 300; color: var(--text-light); }
+        .code-font { font-family: 'JetBrains Mono', monospace; }
+
+        /* LAYOUTS */
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; height: 100%; align-items: stretch; }
+        .center-slide { justify-content: center; align-items: center; text-align: center; }
+        
+        /* COMPONENTS */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            display: flex; flex-direction: column;
+        }
+        .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; width: 100%; }
+
+        /* --- ARCHITECTURE DIAGRAM (COMPACT FIXED GRID) --- */
+        .diagram-container {
+            position: relative;
+            width: 100%;
+            height: 420px; /* Explicit height to prevent overflow */
+            display: grid;
+            /* Columns: User | UI | AgentGroup | Tools-L | Tools-R | Obs */
+            grid-template-columns: 80px 120px 220px 130px 130px 160px;
+            /* Fixed Rows for predictable SVG lines */
+            grid-template-rows: 60px 50px 60px 60px 60px;
+            gap: 15px;
+            justify-content: center;
+            align-content: center;
+            margin-top: 10px;
+        }
+
+        /* SVG LAYER */
+        .svg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1; 
+            pointer-events: none;
+        }
+        
+        .path-line { fill: none; stroke: #CBD5E1; stroke-width: 2; }
+        .path-dash { fill: none; stroke: #C084FC; stroke-width: 2; stroke-dasharray: 6, 4; }
+        .path-raw { fill: none; stroke: #EF4444; stroke-width: 2; } 
+        .path-clean { fill: none; stroke: #10B981; stroke-width: 2; }
+
+        /* NODES */
+        .node {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: white;
+            padding: 8px; /* Tighter padding */
+            text-align: center;
+            font-size: 12px;
+            position: relative;
+            z-index: 2;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            height: 100%;
+        }
+        
+        .node.user { border: none; background: none; box-shadow: none; font-weight: 600; grid-column: 1; grid-row: 1; }
+        .node.ui { grid-column: 2; grid-row: 1; border-color: var(--text-light); height: 50px; align-self: center; }
+        
+        /* Agent Group */
+        .agent-container {
+            grid-column: 3; grid-row: 1;
+            display: flex; gap: 5px;
+            background: #EFF6FF; border: 2px solid var(--secondary);
+            border-radius: 8px; padding: 6px;
+            justify-content: space-around;
+            z-index: 2;
+            height: 60px; align-self: center;
+        }
+        .sub-node { background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #BFDBFE; font-size: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center;}
+        
+        .node.router { grid-column: 3; grid-row: 2; border-style: dashed; background: #F8FAFC; height: 36px; align-self: center; }
+        
+        .node.sql { grid-column: 4; grid-row: 3; border-color: var(--primary); background: #ECFEFF; height: 50px; align-self: center;}
+        .node.rag { grid-column: 5; grid-row: 3; border-color: var(--primary); background: #ECFEFF; height: 50px; align-self: center;}
+        
+        .node.db-sql { grid-column: 4; grid-row: 4; background: #E2E8F0; border-color: #64748B; border-top: 4px solid #64748B; height: 40px; align-self: center;}
+        .node.db-rag { grid-column: 5; grid-row: 4; background: #E2E8F0; border-color: #64748B; border-top: 4px solid #64748B; height: 40px; align-self: center;}
+        
+        .node.pii { grid-column: 4 / span 2; grid-row: 5; border-color: var(--danger); background: #FEF2F2; color: #991B1B; font-weight: 700; height: 40px; align-self: center;}
+        
+        .node.obs { 
+            grid-column: 6; grid-row: 1 / span 5; 
+            margin-left: 10px; 
+            border: 2px dashed #C084FC; background: #FAF5FF;
+            height: 95%; align-self: center;
+        }
+
+        /* LABELS */
+        .flow-label {
+            position: absolute; font-size: 10px; font-weight: 700; background: white; padding: 1px 4px; border-radius: 4px; z-index: 5;
+        }
+
+        /* DATA TABLES */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 20px; }
+        .data-table th { text-align: left; padding: 10px; border-bottom: 2px solid var(--border); color: var(--text-light); font-size: 12px; text-transform: uppercase; }
+        .data-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+
+        /* OPTIMIZATION ITEMS */
+        .opt-item {
+            display: flex; gap: 15px; margin-bottom: 15px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+        }
+        .opt-icon {
+            width: 30px; height: 30px; background: #E0F2FE; color: var(--secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+
+        /* CONTROLS */
+        .nav-controls {
+            position: fixed; bottom: 20px; background: rgba(255, 255, 255, 0.95); padding: 12px 24px; border-radius: 50px; display: flex; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 1000; align-items: center;
+        }
+        .nav-btn { background: var(--text-main); color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+        .nav-btn:hover { transform: translateY(-2px); }
+        .metric-pill { background: #F1F5F9; color: var(--text-main); padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block; margin-top: 10px; border: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+
+    <div class="nav-controls">
+        <button class="nav-btn" onclick="prevSlide()">← Prev</button>
+        <span class="slide-counter" id="counter">1 / 21</span>
+        <button class="nav-btn" onclick="nextSlide()">Next →</button>
+        <div style="width: 1px; height: 20px; background: #ccc; margin: 0 10px;"></div>
+        <button class="nav-btn" onclick="window.print()" style="background: var(--primary);">Save as PDF</button>
+    </div>
+
+    <div class="slide-container active">
+        <div class="brand-strip"></div>
+        <div class="center-slide" style="height: 100%; display: flex; flex-direction: column;">
+            <div style="background: #ECFEFF; color: var(--primary-dark); padding: 8px 16px; border-radius: 100px; font-weight: 600; font-size: 14px; margin-bottom: 30px; border: 1px solid #CFFAFE;">
+                SOLUTIONS ENGINEERING CHALLENGE
+            </div>
+            <h1 contenteditable="true">Aether</h1>
+            <p class="subtitle" contenteditable="true">The Autonomous SRE Agent for Self-Healing Infrastructure</p>
+            
+            <div style="margin-top: 60px; display: flex; gap: 60px; justify-content: center; color: var(--text-light);">
+                <div contenteditable="true"><i class="fa-solid fa-user"></i> Prepared by Sreeram Nudurupati</div>
+                <div contenteditable="true"><i class="fa-solid fa-calendar"></i> January 2026</div>
+            </div>
+            
+            <div style="margin-top: 40px; display: flex; gap: 10px;">
+                <span class="metric-pill code-font">v3.0.0</span>
+                <span class="metric-pill code-font">Python 3.12</span>
+                <span class="metric-pill code-font">LLM-Judge Included</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="center-slide" style="height: 100%; display: flex; flex-direction: column;">
+            <h2 contenteditable="true">Audience</h2>
+            <p style="margin-bottom: 40px;" contenteditable="true">Aligning technical capabilities with operational goals.</p>
+            
+            <div class="card-grid">
+                <div class="card" style="text-align: center;">
+                    <i class="fa-solid fa-chart-line" style="font-size: 40px; color: var(--primary); margin-bottom: 20px;"></i>
+                    <h3 contenteditable="true" style="color: var(--dark);">CTO / VP Eng</h3>
+                    <p style="font-size: 14px; margin-bottom: 5px; color: var(--text-light);">Economic Buyer</p>
+                    <p style="font-size: 13px;" contenteditable="true">Cares about system uptime, cloud costs, and engineering velocity.</p>
+                    <div class="metric-pill" contenteditable="true">Metric: MTTR / Uptime</div>
+                </div>
+
+                <div class="card" style="text-align: center;">
+                    <i class="fa-solid fa-helmet-safety" style="font-size: 40px; color: #F59E0B; margin-bottom: 20px;"></i>
+                    <h3 contenteditable="true" style="color: var(--dark);">SRE Manager</h3>
+                    <p style="font-size: 14px; margin-bottom: 5px; color: var(--text-light);">Internal Champion</p>
+                    <p style="font-size: 13px;" contenteditable="true">Wants to reduce pager fatigue and automate repetitive debugging.</p>
+                    <div class="metric-pill" contenteditable="true">Metric: On-Call Incidents</div>
+                </div>
+
+                <div class="card" style="text-align: center;">
+                    <i class="fa-solid fa-shield-halved" style="font-size: 40px; color: var(--secondary); margin-bottom: 20px;"></i>
+                    <h3 contenteditable="true" style="color: var(--dark);">SecOps Lead</h3>
+                    <p style="font-size: 14px; margin-bottom: 5px; color: var(--text-light);">Gatekeeper</p>
+                    <p style="font-size: 13px;" contenteditable="true">Focused on data privacy (PII), access control, and safety guardrails.</p>
+                    <div class="metric-pill" contenteditable="true">Metric: Compliance</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="center-slide" style="height: 100%; display: flex; flex-direction: column;">
+            <h2 contenteditable="true">Agenda</h2>
+            <div class="card-grid" style="margin-top: 40px;">
+                <div class="card">
+                    <h1 style="color: var(--primary); font-size: 40px; margin-bottom: 10px;">01</h1>
+                    <h3 contenteditable="true">The Challenge</h3>
+                    <p contenteditable="true">Discovery findings from "NovaPay".</p>
+                </div>
+                <div class="card">
+                    <h1 style="color: var(--primary); font-size: 40px; margin-bottom: 10px;">02</h1>
+                    <h3 contenteditable="true">The Solution</h3>
+                    <p contenteditable="true">Architecture, Optimizations, and Features.</p>
+                </div>
+                <div class="card">
+                    <h1 style="color: var(--primary); font-size: 40px; margin-bottom: 10px;">03</h1>
+                    <h3 contenteditable="true">Live Demo</h3>
+                    <p contenteditable="true">Self-healing SQL, RAG, and Observability.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <h2 contenteditable="true" style="margin-bottom: 20px;">The Challenge: "NovaPay"</h2>
+        
+        <div style="background: #F1F5F9; border-left: 4px solid var(--primary); padding: 15px 20px; margin-bottom: 20px; width: 100%;">
+            <strong style="color: var(--dark);">CUSTOMER PROFILE</strong>
+            <p style="font-size: 15px; margin: 5px 0 0 0;" contenteditable="true">
+                NovaPay is a FinTech scaling to 5M users. They have 120 microservices and generate 500GB of logs/day.
+            </p>
+        </div>
+
+        <div class="two-col" style="align-items: start;">
+            <div>
+                <h3 style="color: var(--danger);">Pain Points from Discovery</h3>
+                <ul style="margin-top: 15px;">
+                    <li contenteditable="true"><strong>Data Fragmentation:</strong> Metrics in Prometheus, Logs in Splunk, Runbooks in Notion. No unification.</li>
+                    <li contenteditable="true"><strong>Knowledge Gap:</strong> Junior SREs struggle to find the right SQL joins for obscure services.</li>
+                    <li contenteditable="true"><strong>Alert Fatigue:</strong> 200+ Alerts/day. 60% are noise or recurring known issues.</li>
+                </ul>
+            </div>
+
+            <div class="card" style="background: #FEF2F2; border-color: #FECACA; text-align: center;">
+                <h3 style="color: #991B1B;">Risk of Status Quo</h3>
+                <div style="font-size: 48px; font-weight: 700; color: #DC2626; margin: 20px 0;">$50k / hr</div>
+                <p style="color: #7F1D1D;">Cost of downtime during peak transaction windows.</p>
+                <div style="margin-top: 15px; font-size: 13px; color: #991B1B; font-style: italic;">
+                    "We are bleeding money while engineers search for wiki pages." - CTO
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="two-col">
+            <div>
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                    <i class="fa-solid fa-robot" style="font-size: 32px; color: var(--primary);"></i>
+                    <h2 contenteditable="true" style="margin: 0; font-size: 32px; color: var(--dark);">Why Agentic SRE?</h2>
+                </div>
+                
+                <p style="font-size: 20px; font-weight: 500; color: var(--primary); margin-bottom: 20px;">Moving beyond static runbooks.</p>
+                <p contenteditable="true">Traditional automation is brittle. Agents provide reasoning capabilities to handle the "unknown unknowns" of modern infrastructure.</p>
+                
+                <ul style="list-style: none; padding: 0; margin-top: 30px;">
+                    <li style="margin-bottom: 20px;"><i class="fa-solid fa-check-circle" style="color: var(--primary); margin-right: 10px;"></i> <strong contenteditable="true">Reasoning vs. Scripting</strong><br><span style="font-size: 14px; margin-left: 28px;">Agents adapt to schema changes; scripts break.</span></li>
+                    <li style="margin-bottom: 20px;"><i class="fa-solid fa-check-circle" style="color: var(--primary); margin-right: 10px;"></i> <strong contenteditable="true">Context Synthesis</strong><br><span style="font-size: 14px; margin-left: 28px;">Correlates SQL Metrics with PDF Runbooks instantly.</span></li>
+                    <li><i class="fa-solid fa-check-circle" style="color: var(--primary); margin-right: 10px;"></i> <strong contenteditable="true">Always On</strong><br><span style="font-size: 14px; margin-left: 28px;">Responds to alerts in seconds, not minutes.</span></li>
+                </ul>
+            </div>
+            <div style="background: #0F172A; color: white; padding: 30px; border-radius: 16px; border: 1px solid #334155;">
+                <span style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px; color: #94A3B8;">Architecture Shift</span>
+                <h3 style="color: white; font-size: 28px; margin-top: 5px;" contenteditable="true">The "JIT" Advantage</h3>
+                
+                <div style="margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 15px;">
+                    <strong style="color: #EF4444; font-size: 14px;" contenteditable="true">THE PROBLEM</strong>
+                    <p style="color: #CBD5E1; font-size: 15px; margin-top: 5px;" contenteditable="true">Long-running bots hallucinate by mixing context from previous incidents (Context Poisoning).</p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <strong style="color: var(--success); font-size: 14px;" contenteditable="true">THE SOLUTION</strong>
+                    <p style="color: #CBD5E1; font-size: 15px; margin-top: 5px;" contenteditable="true">Aether spins up a fresh, stateless agent for every single query.</p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <span style="font-size: 32px; font-weight: 700; color: var(--primary);" contenteditable="true">0%</span>
+                        <p style="font-size: 12px; margin: 0; color: #94A3B8;">Context Leakage</p>
+                    </div>
+                    <div>
+                        <span style="font-size: 32px; font-weight: 700; color: var(--primary);" contenteditable="true">&lt;100ms</span>
+                        <p style="font-size: 12px; margin: 0; color: #94A3B8;">Warm-up Time</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <h2 contenteditable="true">Platform Capabilities</h2>
+        <div class="card-grid" style="grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+            <div class="opt-item" style="background: white;">
+                <div class="opt-icon"><i class="fa-solid fa-brain"></i></div>
+                <div>
+                    <strong style="color: var(--dark);">Autonomous Reasoning Loop</strong>
+                    <p style="font-size: 14px; margin-top: 5px;">Uses Chain-of-Thought (CoT) to plan investigations: Schema Check &rarr; Query Metrics &rarr; Search Runbooks.</p>
+                </div>
+            </div>
+            <div class="opt-item" style="background: white;">
+                <div class="opt-icon"><i class="fa-solid fa-eye"></i></div>
+                <div>
+                    <strong style="color: var(--dark);">Full Observability</strong>
+                    <p style="font-size: 14px; margin-top: 5px;">Integrated <strong>OpenTelemetry</strong> tracing to visualize the agent's decision-making process in Jaeger.</p>
+                </div>
+            </div>
+            <div class="opt-item" style="background: white;">
+                <div class="opt-icon"><i class="fa-solid fa-shield-cat"></i></div>
+                <div>
+                    <strong style="color: var(--dark);">PII Redaction Middleware</strong>
+                    <p style="font-size: 14px; margin-top: 5px;">Custom regex-based firewall intercepts outputs to strip Emails, Keys, and SSNs before LLM processing.</p>
+                </div>
+            </div>
+            <div class="opt-item" style="background: white;">
+                <div class="opt-icon"><i class="fa-solid fa-layer-group"></i></div>
+                <div>
+                    <strong style="color: var(--dark);">Multi-Modal Investigation</strong>
+                    <p style="font-size: 14px; margin-top: 5px;">Correlates structured time-series data (SQLite) with unstructured institutional knowledge (ChromaDB).</p>
+                </div>
+            </div>
+            <div class="opt-item" style="background: white; grid-column: span 2;">
+                <div class="opt-icon"><i class="fa-brands fa-docker"></i></div>
+                <div>
+                    <strong style="color: var(--dark);">Production Ready</strong>
+                    <p style="font-size: 14px; margin-top: 5px;">Fully containerized with Docker for consistent deployment across cloud environments.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <h2 contenteditable="true">System Architecture</h2>
+        <p style="font-size: 14px; color: var(--text-light); margin-bottom: 20px;">Logical Data & Control Flow</p>
+        
+        <div class="diagram-container">
+            
+            <svg class="svg-layer" width="100%" height="100%">
+                <defs>
+                    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#CBD5E1"/></marker>
+                    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#EF4444"/></marker>
+                    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#10B981"/></marker>
+                </defs>
+
+                <line x1="80" y1="30" x2="160" y2="30" class="path-line" marker-end="url(#arrow)"/>
+                <line x1="280" y1="30" x2="330" y2="30" class="path-line" marker-end="url(#arrow)"/>
+                
+                <line x1="440" y1="60" x2="440" y2="90" class="path-line" marker-end="url(#arrow)"/>
+                
+                <path d="M 440 125 L 440 145 L 570 145 L 570 165" class="path-line" marker-end="url(#arrow)"/>
+                <path d="M 440 125 L 440 145 L 700 145 L 700 165" class="path-line" marker-end="url(#arrow)"/>
+
+                <line x1="570" y1="215" x2="570" y2="245" class="path-line" marker-end="url(#arrow)"/>
+                <line x1="700" y1="215" x2="700" y2="245" class="path-line" marker-end="url(#arrow)"/>
+
+                <path d="M 570 285 L 570 305 L 635 305 L 635 325" class="path-raw" marker-end="url(#arrow-red)"/>
+                <path d="M 700 285 L 700 305 L 635 305 L 635 325" class="path-raw" marker-end="url(#arrow-red)"/>
+
+                <path d="M 505 345 L 300 345 L 300 20 L 400 20 L 400 30" class="path-clean" marker-end="url(#arrow-green)"/>
+
+                <line x1="860" y1="30" x2="450" y2="30" class="path-dash"/> <line x1="860" y1="190" x2="760" y2="190" class="path-dash"/> </svg>
+
+            <div class="node user"><i class="fa-solid fa-user"></i> User</div>
+            <div class="node ui"><i class="fa-solid fa-desktop"></i> Streamlit</div>
+            
+            <div class="agent-container">
+                <div class="sub-node" style="border-color: #10B981; color: #065F46;"><strong><i class="fa-solid fa-robot"></i> JIT Agent</strong></div>
+                <div class="sub-node" style="border-color: #10B981; background: #ECFDF5;"><strong><i class="fa-solid fa-brain"></i> OpenAI</strong></div>
+            </div>
+
+            <div class="node router"><i class="fa-solid fa-shuffle"></i> MCP Router</div>
+
+            <div class="node sql"><i class="fa-solid fa-table"></i> SQL Tool</div>
+            <div class="node rag"><i class="fa-solid fa-book"></i> RAG Tool</div>
+
+            <div class="node db-sql">SQLite</div>
+            <div class="node db-rag">ChromaDB</div>
+
+            <div class="node pii"><i class="fa-solid fa-shield-cat"></i> PII Redaction Firewall</div>
+
+            <div class="node obs">
+                <i class="fa-solid fa-eye" style="font-size: 24px; color: #9333EA; margin-bottom: 10px;"></i>
+                <strong style="color: #9333EA;">Observability</strong>
+                <span style="font-size: 10px; color: #7E22CE; margin-top: 5px;">OpenTelemetry<br>Jaeger Tracing</span>
+            </div>
+
+            <div class="flow-label" style="top: 285px; left: 620px; color: #EF4444; border: 1px solid #FECACA;">RAW</div>
+            <div class="flow-label" style="top: 180px; left: 280px; color: #10B981; border: 1px solid #A7F3D0;">SANITIZED</div>
+
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <h2 contenteditable="true">Engineering Optimizations</h2>
+        <div style="overflow-y: auto; font-size: 14px; padding-right: 10px;">
+            
+            <div class="opt-item">
+                <div class="opt-icon"><i class="fa-solid fa-microchip"></i></div>
+                <div style="width: 100%;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="color: var(--dark);">1. JIT Agent Factory</strong>
+                        <span style="color: var(--success); font-size: 12px; font-weight: 700;">Zero Contamination</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 80px 1fr; gap: 10px; margin-top: 5px;">
+                        <span style="color: var(--danger); font-size: 12px;">PROBLEM</span>
+                        <span>Context poisoning where "Payment" queries bled into "Kafka" investigations.</span>
+                        <span style="color: var(--success); font-size: 12px;">SOLUTION</span>
+                        <span>Spin up a fresh, stateless agent for every single request.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="opt-item">
+                <div class="opt-icon"><i class="fa-solid fa-database"></i></div>
+                <div style="width: 100%;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="color: var(--dark);">2. Schema-Aware Prompting</strong>
+                        <span style="color: var(--success); font-size: 12px; font-weight: 700;">High Accuracy</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 80px 1fr; gap: 10px; margin-top: 5px;">
+                        <span style="color: var(--danger); font-size: 12px;">PROBLEM</span>
+                        <span>LLM hallucinating column names and failing joins.</span>
+                        <span style="color: var(--success); font-size: 12px;">SOLUTION</span>
+                        <span>Dynamic prompt injection with `LIKE '%{extracted_name}%'` fuzzy matching.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="opt-item">
+                <div class="opt-icon"><i class="fa-solid fa-coins"></i></div>
+                <div style="width: 100%;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="color: var(--dark);">3. Token & Cost Opt</strong>
+                        <span style="color: var(--success); font-size: 12px; font-weight: 700;">No Rate Limits</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 80px 1fr; gap: 10px; margin-top: 5px;">
+                        <span style="color: var(--danger); font-size: 12px;">PROBLEM</span>
+                        <span>Large runbooks triggering 429 errors.</span>
+                        <span style="color: var(--success); font-size: 12px;">SOLUTION</span>
+                        <span>"Head + Tail" truncation and 8k char safety caps.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="opt-item">
+                <div class="opt-icon"><i class="fa-solid fa-bolt"></i></div>
+                <div style="width: 100%;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="color: var(--dark);">4. Performance Caching</strong>
+                        <span style="color: var(--success); font-size: 12px; font-weight: 700;">&lt;0.1s Response</span>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        Integrated <strong>InMemoryCache</strong> to serve identical reasoning traces instantly.
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="two-col">
+            <div>
+                <h2 contenteditable="true">Prompt-as-Code Architecture</h2>
+                <p contenteditable="true">Treating AI instructions with the same rigor as application code.</p>
+                
+                <div class="card" style="margin-top: 20px; border-left: 4px solid var(--accent);">
+                    <div style="display: flex; gap: 15px; align-items: flex-start;">
+                        <i class="fa-solid fa-code-branch" style="color: var(--accent); font-size: 24px; margin-top: 5px;"></i>
+                        <div>
+                            <h3 style="margin: 0;">Decoupled Logic</h3>
+                            <p style="margin-top: 10px;">We separated the <strong>Agent Orchestration</strong> (Python) from the <strong>Cognitive Instructions</strong> (YAML).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 30px;">
+                    <strong style="color: var(--dark);">Why this matters:</strong>
+                    <ul style="margin-top: 10px;">
+                        <li><strong>Versioning:</strong> Git track `prompts_v1.yaml` vs `prompts_v2.yaml`.</li>
+                        <li><strong>A/B Testing:</strong> Run experiments to see if "Polite Persona" yields better SQL than "Strict Persona".</li>
+                        <li><strong>Safety:</strong> Hot-swap instructions to patch hallucinations without redeploying binaries.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="background: #1E293B; border-radius: 12px; padding: 25px; color: #E2E8F0; font-family: 'JetBrains Mono', monospace; font-size: 12px; display: flex; flex-direction: column; justify-content: center;">
+                <div style="color: #94A3B8; margin-bottom: 5px;"># config/prompts_v2.yaml</div>
+                <div style="color: #98C379;">agent_system_prompt: |</div>
+                <div style="padding-left: 20px; color: #E5C07B;">
+                    You are Ops-Sentinel.<br>
+                    STRICT EXECUTION ORDER:<br>
+                    - STEP 1: Check schema (list_tables).<br>
+                    - STEP 2: Query Metrics.<br>
+                    - STEP 3: ANALYZE.<br>
+                    <span style="color: #EF4444;">CONSTRAINT: Do NOT search runbooks if metrics are healthy.</span>
+                </div>
+
+                <div style="height: 1px; background: #334155; margin: 20px 0;"></div>
+
+                <div style="color: #94A3B8; margin-bottom: 5px;"># src/agent.py</div>
+                <div style="color: #C678DD;">def</div> <span style="color: #61AFEF;">run_agent</span>(query, prompt_file):<br>
+                <div style="padding-left: 20px;">
+                    config = load_config(prompt_file)<br>
+                    agent = create_agent(config)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="two-col">
+            <div style="display: flex; flex-direction: column; height: 100%;">
+                <div>
+                    <h2 contenteditable="true">Minimizing Hallucinations</h2>
+                    <p contenteditable="true">How we reduced "Context Poisoning" via <strong>Just-In-Time (JIT)</strong> architecture.</p>
+                </div>
+                
+                <div class="card" style="margin-top: 15px; border-left: 4px solid var(--primary); flex-grow: 1; display: flex; justify-content: center;">
+                    <i class="fa-solid fa-microchip" style="color: var(--primary); font-size: 24px; margin-bottom: 10px;"></i>
+                    <h3 style="margin: 0;" contenteditable="true">Dynamic Prompt Injection</h3>
+                    <p style="font-size: 15px; margin-top: 10px;" contenteditable="true">
+                        The System Prompt is not static. We inject the user's exact query into the prompt at runtime.<br><br>
+                        <em>"Current Mission: Investigate <span style="background: #FEF3C7; padding: 0 4px;">{kafka_lag}</span>"</em>
+                    </p>
+                </div>
+                
+                <div class="card" style="background: #F0FDF4; border-color: var(--success); padding: 15px; margin-top: 15px;">
+                     <strong style="color: #166534;"><i class="fa-solid fa-check"></i> Result: Precision</strong>
+                     <p style="font-size: 13px; margin: 5px 0 0 0; color: #14532D;">
+                        The LLM effectively "forgets" previous searches (e.g., Payment API) and focuses 100% on the current task (Kafka).
+                     </p>
+                </div>
+            </div>
+
+            <div style="background: #1E293B; border-radius: 12px; padding: 25px; color: #E2E8F0; font-family: 'JetBrains Mono', monospace; font-size: 13px; height: 100%; display: flex; flex-direction: column; justify-content: center;">
+                
+                <div style="color: #94A3B8; margin-bottom: 15px;"># src/agent.py (Simplified)</div>
+                
+                <div style="margin-bottom: 5px;">
+                    <span style="color: #C678DD;">def</span> <span style="color: #61AFEF;">build_agent</span>(query):
+                </div>
+                
+                <div style="padding-left: 20px; color: #98C379; margin-bottom: 5px;">
+                    """Creates a FRESH agent per request"""
+                </div>
+                
+                <div style="padding-left: 20px; margin-bottom: 15px;">
+                    topic = extract_topic(query)
+                </div>
+                
+                <div style="padding-left: 20px; margin-bottom: 2px;">
+                    <span style="color: #56B6C2;">system_prompt</span> = f"""
+                </div>
+
+                <div style="padding-left: 20px; color: #E5C07B; margin-bottom: 2px;">
+                    MISSION: Investigate {topic}
+                </div>
+                
+                <div style="padding-left: 20px; color: #E5C07B; margin-bottom: 2px;">
+                    RULES:
+                </div>
+                
+                <div style="padding-left: 20px; color: #E5C07B; margin-bottom: 2px;">
+                    1. Ignore all other services.
+                </div>
+                
+                <div style="padding-left: 20px; color: #E5C07B; margin-bottom: 2px;">
+                    2. Join tables on service_id.
+                </div>
+                
+                <div style="padding-left: 20px; margin-bottom: 15px;">
+                    """
+                </div>
+                
+                <div style="padding-left: 20px;">
+                    <span style="color: #C678DD;">return</span> create_agent(prompt)
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="center-slide" style="height: 100%; display: flex; flex-direction: column;">
+            <h2 contenteditable="true">Multi-Modal Synthesis</h2>
+            <p style="margin-bottom: 40px;">Combining quantitative metrics with qualitative knowledge.</p>
+
+            <div style="display: flex; align-items: center; gap: 30px; width: 100%;">
+                
+                <div class="card" style="flex: 1; border-top: 4px solid var(--secondary);">
+                    <i class="fa-solid fa-table" style="font-size: 32px; color: var(--secondary); margin-bottom: 15px;"></i>
+                    <h3>Structured Data</h3>
+                    <p style="font-size: 13px;">(SQL / Metrics)</p>
+                    <div style="background: #F1F5F9; padding: 10px; border-radius: 6px; font-size: 12px; text-align: left; margin-top: 10px;">
+                        CPU_Usage: 98%<br>
+                        Service: Auth-API<br>
+                        Timestamp: 10:02 AM
+                    </div>
+                </div>
+
+                <div style="font-size: 24px; color: var(--text-light);"><i class="fa-solid fa-plus"></i></div>
+
+                <div class="card" style="flex: 1; border-top: 4px solid #F59E0B;">
+                    <i class="fa-solid fa-file-lines" style="font-size: 32px; color: #F59E0B; margin-bottom: 15px;"></i>
+                    <h3>Unstructured Data</h3>
+                    <p style="font-size: 13px;">(Docs / Runbooks)</p>
+                    <div style="background: #FFFBEB; padding: 10px; border-radius: 6px; font-size: 12px; text-align: left; margin-top: 10px; border: 1px solid #FEF3C7;">
+                        "If Auth API CPU > 90%, check Redis connection pool saturation..."
+                    </div>
+                </div>
+
+                <div style="font-size: 24px; color: var(--text-light);"><i class="fa-solid fa-arrow-right"></i></div>
+
+                <div class="card" style="flex: 1; border-top: 4px solid var(--success); background: #ECFEFF; border-color: var(--primary);">
+                    <i class="fa-solid fa-lightbulb" style="font-size: 32px; color: var(--primary); margin-bottom: 15px;"></i>
+                    <h3>Actionable Insight</h3>
+                    <div style="font-size: 14px; font-weight: 600; color: #0E7490; margin-top: 10px;">
+                        "High CPU detected. Correlates with known Redis issue. Recommended Action: Restart Sentinel."
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <h2 contenteditable="true">Schema-Aware SQL Generation</h2>
+        
+        <div class="two-col" style="align-items: flex-start; margin-top: 20px;">
+            <div style="border: 1px solid #FECACA; border-radius: 8px; overflow: hidden;">
+                <div style="background: #FEF2F2; padding: 10px; border-bottom: 1px solid #FECACA;">
+                    <strong style="color: #DC2626; font-size: 14px;">❌ Naive Approach</strong>
+                </div>
+                <div style="padding: 15px; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                    SELECT * FROM metrics <br>
+                    WHERE <span style="background: #FECACA;">service_name = 'Auth'</span>
+                </div>
+                <div style="padding: 10px; background: #FFF5F5; color: #DC2626; font-size: 11px; border-top: 1px solid #FECACA;">
+                    Error: Column 'service_name' does not exist.
+                </div>
+            </div>
+
+            <div style="border: 1px solid #BBF7D0; border-radius: 8px; overflow: hidden;">
+                <div style="background: #F0FDF4; padding: 10px; border-bottom: 1px solid #BBF7D0;">
+                    <strong style="color: #166534; font-size: 14px;">✅ Aether Approach</strong>
+                </div>
+                <div style="padding: 15px; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                    SELECT m.* FROM metrics m<br>
+                    <span style="background: #DCFCE7;">JOIN services s ON m.service_id = s.id</span><br>
+                    WHERE lower(s.name) LIKE '%auth%' LIMIT 50
+                </div>
+                <div style="padding: 10px; background: #F0FDF4; color: #166534; font-size: 11px; border-top: 1px solid #BBF7D0;">
+                    Result: 50 rows returned. (Correctly Joined)
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; background: #FDF4FF; border: 1px dashed #D8B4FE; padding: 15px; border-radius: 8px;">
+            <div style="font-weight: 700; color: #6B21A8; font-size: 14px; margin-bottom: 5px;">⚠️ Limitations & Future Roadmap</div>
+            <p style="font-size: 13px; margin: 0; color: #581C87;">
+                SQL generation struggles with complex multi-hop joins (3+ tables). 
+                <strong style="color: #6B21A8;">Solution: GraphRAG.</strong> We plan to replace SQL Joins with a Graph Database (ArangoDB) to model service dependencies as edges, making retrieval deterministic.
+            </p>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="two-col">
+            <div>
+                <h2 contenteditable="true">Production Safety Rails</h2>
+                <p contenteditable="true">Ready for enterprise deployment.</p>
+                
+                <div style="margin-top: 30px; display: flex; flex-direction: column; gap: 20px;">
+                    <div style="display: flex; gap: 15px;">
+                        <i class="fa-solid fa-user-shield" style="color: var(--primary); margin-top: 5px;"></i>
+                        <div>
+                            <strong contenteditable="true">PII Redaction Middleware</strong>
+                            <p style="font-size: 14px;" contenteditable="true">Regex firewall strips emails & IPs before LLM sees them.</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 15px;">
+                        <i class="fa-solid fa-coins" style="color: var(--primary); margin-top: 5px;"></i>
+                        <div>
+                            <strong contenteditable="true">Token Optimization</strong>
+                            <p style="font-size: 14px;" contenteditable="true">RAG results capped at 8k chars. Cached responses save API costs.</p>
+                        </div>
+                    </div>
+                     <div style="display: flex; gap: 15px;">
+                        <i class="fa-solid fa-stopwatch" style="color: var(--primary); margin-top: 5px;"></i>
+                        <div>
+                            <strong contenteditable="true">Tenacity Retries</strong>
+                            <p style="font-size: 14px;" contenteditable="true">Exponential backoff handles API flakes gracefully.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card" style="background: #F8FAFC;">
+                <h3 style="font-size: 16px; margin-bottom: 20px;">Performance Benchmarks</h3>
+                <table class="data-table" style="margin: 0;">
+                    <tr>
+                        <td contenteditable="true">Cold Start</td>
+                        <td class="code-font">1.2s</td>
+                    </tr>
+                    <tr>
+                        <td contenteditable="true">Cached Query</td>
+                        <td class="code-font" style="color: var(--success); font-weight: bold;">< 0.1s</td>
+                    </tr>
+                    <tr>
+                        <td contenteditable="true">Context Window</td>
+                        <td class="code-font">128k</td>
+                    </tr>
+                    <tr>
+                        <td contenteditable="true">Avg Cost/Run</td>
+                        <td class="code-font">$0.05</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="two-col">
+            <div style="display: flex; flex-direction: column; justify-content: center;">
+                <h2 contenteditable="true">Automated Evaluation</h2>
+                <p style="color: var(--primary); font-weight: 500;">"LLM-as-a-Judge"</p>
+                <p contenteditable="true">We don't guess if the agent is improving. We grade it.</p>
+                
+                <div style="margin-top: 20px; background: #FFF7ED; border: 1px solid #FED7AA; border-radius: 8px; padding: 20px;">
+                    <strong style="color: #C2410C;">The Problem with Chatbots</strong>
+                    <p style="margin-top: 5px; font-size: 14px; color: #9A3412;">
+                        An agent might get the right answer but use the wrong tools (e.g., guessing instead of looking up data). Manual log review is unscalable.
+                    </p>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <strong>The Solution: `evaluate.py`</strong>
+                    <p style="font-size: 14px; margin-top: 5px;">
+                        A script runs the agent against 50+ test cases. A stronger model (GPT-4o) reads the execution logs and grades them P/F based on a rubric.
+                    </p>
+                </div>
+            </div>
+
+            <div>
+                <div class="card" style="height: 100%; border-top: 4px solid var(--success);">
+                    <h3 style="margin-bottom: 20px;">Live Scorecard: V1 vs. V2</h3>
+                    
+                    <table class="data-table" style="margin: 0;">
+                        <tr style="background: #F8FAFC;">
+                            <th>Test Case</th>
+                            <th>Prompt V1 (Parallel)</th>
+                            <th>Prompt V2 (Strict)</th>
+                        </tr>
+                        <tr>
+                            <td><strong>TC-001</strong><br><span style="font-size: 11px; color: #94A3B8;">Check DB Schema</span></td>
+                            <td style="color: #EF4444;"><i class="fa-solid fa-xmark"></i> Fail (40%)<br><span style="font-size: 10px;">Hallucinated columns</span></td>
+                            <td style="color: #10B981;"><i class="fa-solid fa-check"></i> Pass (100%)<br><span style="font-size: 10px;">Correctly called list_tables</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>TC-002</strong><br><span style="font-size: 11px; color: #94A3B8;">Skip Runbook if Healthy</span></td>
+                            <td style="color: #EF4444;"><i class="fa-solid fa-xmark"></i> Fail (50%)<br><span style="font-size: 10px;">Searched unnecessarily</span></td>
+                            <td style="color: #10B981;"><i class="fa-solid fa-check"></i> Pass (95%)<br><span style="font-size: 10px;">Reasoned to skip step</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>TC-003</strong><br><span style="font-size: 11px; color: #94A3B8;">SQL Syntax</span></td>
+                            <td style="color: #F59E0B;"><i class="fa-solid fa-triangle-exclamation"></i> Warn (70%)</td>
+                            <td style="color: #10B981;"><i class="fa-solid fa-check"></i> Pass (100%)</td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-top: 20px; text-align: center;">
+                        <span style="font-size: 12px; background: #F0FDF4; color: #166534; padding: 5px 10px; border-radius: 20px; border: 1px solid #BBF7D0;">
+                            <i class="fa-solid fa-chart-line"></i> <strong>Result: +60% Accuracy Gain</strong>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="center-slide" style="height: 100%; display: flex; flex-direction: column;">
+            <div class="demo-graphic">
+                <div class="play-btn"><i class="fa-solid fa-play"></i></div>
+            </div>
+            <h1 contenteditable="true" style="font-size: 80px; letter-spacing: -2px; margin-bottom: 10px;">LIVE DEMO</h1>
+            <p class="subtitle" contenteditable="true">Debugging a "High Latency" Incident...</p>
+            <div style="margin-top: 40px; display: flex; gap: 20px; opacity: 0.6;">
+                <span style="font-size: 14px; background: #F1F5F9; padding: 5px 15px; border-radius: 20px;">1. Schema Check</span>
+                <span style="font-size: 14px; background: #F1F5F9; padding: 5px 15px; border-radius: 20px;">2. SQL Join</span>
+                <span style="font-size: 14px; background: #F1F5F9; padding: 5px 15px; border-radius: 20px;">3. Runbook Lookup</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="center-slide">
+            <h2 contenteditable="true">Transforming Incident Response</h2>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; width: 100%; margin-top: 40px;">
+                <div class="card" style="background: #FEF2F2; border-color: #FECACA;">
+                    <div style="background: #EF4444; color: white; display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: 700; margin-bottom: 20px;">BEFORE</div>
+                    <h3 style="color: #991B1B;">The "War Room"</h3>
+                    <ul style="text-align: left; margin-top: 20px; color: #7F1D1D;">
+                        <li style="margin-bottom: 15px;"><i class="fa-solid fa-clock" style="margin-right: 10px;"></i> <strong>Slow:</strong> 45 mins to gather data.</li>
+                        <li style="margin-bottom: 15px;"><i class="fa-solid fa-people-group" style="margin-right: 10px;"></i> <strong>Expensive:</strong> 5 Engineers on a Zoom call.</li>
+                        <li><i class="fa-solid fa-shuffle" style="margin-right: 10px;"></i> <strong>Inconsistent:</strong> Depends on who is awake.</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="background: #ECFEFF; border-color: var(--primary);">
+                    <div style="background: var(--primary); color: white; display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: 700; margin-bottom: 20px;">AFTER</div>
+                    <h3 style="color: #0E7490;">Aether Investigation</h3>
+                    <ul style="text-align: left; margin-top: 20px; color: #155E75;">
+                        <li style="margin-bottom: 15px;"><i class="fa-solid fa-bolt" style="margin-right: 10px;"></i> <strong>Fast:</strong> 30 seconds to initial diagnosis.</li>
+                        <li style="margin-bottom: 15px;"><i class="fa-solid fa-robot" style="margin-right: 10px;"></i> <strong>Cheap:</strong> $0.05 per incident report.</li>
+                        <li><i class="fa-solid fa-check-double" style="margin-right: 10px;"></i> <strong>Standardized:</strong> Follows runbooks perfectly.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <h2 contenteditable="true">Business Impact & ROI</h2>
+        
+        <div class="two-col" style="gap: 50px;">
+            <table class="data-table" style="margin-top: 20px;">
+                <tr style="background: #F8FAFC;">
+                    <th>Metric</th>
+                    <th>Current State</th>
+                    <th>Aether State</th>
+                </tr>
+                <tr>
+                    <td><strong>MTTR</strong></td>
+                    <td>45 Mins</td>
+                    <td style="color: var(--primary); font-weight: 600;">1 Min</td>
+                </tr>
+                <tr>
+                    <td><strong>Engineering Cost</strong></td>
+                    <td>$400 / incident</td>
+                    <td style="color: var(--primary); font-weight: 600;">$0.05 / incident</td>
+                </tr>
+                 <tr>
+                    <td><strong>Hours Saved/Yr</strong></td>
+                    <td>0</td>
+                    <td style="color: var(--primary); font-weight: 600;">1,200+ Hours</td>
+                </tr>
+            </table>
+
+            <div class="card" style="background: #F0FDF4; border-color: #BBF7D0; text-align: center; padding: 30px;">
+                <div style="color: #166534; font-size: 14px; font-weight: 700; text-transform: uppercase;">Projected Annual Savings</div>
+                <div style="font-size: 56px; font-weight: 700; color: #166534; margin: 10px 0;">$150k+</div>
+                <p style="color: #15803D; font-size: 14px;">Based on 3 major incidents/week.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <h2 contenteditable="true">Roadmap & Production Readiness</h2>
+        <p style="color: var(--text-light); margin-bottom: 25px;">Transitioning from MVP to Enterprise Scale</p>
+
+        <div class="two-col" style="align-items: start;">
+            
+            <div>
+                <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+                    <i class="fa-solid fa-server" style="color: var(--primary);"></i>
+                    <h3 style="margin: 0;">Infrastructure Hardening</h3>
+                </div>
+                
+                <div class="opt-item" style="flex-direction: column; gap: 5px; background: white;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="font-size: 14px;">State Management</strong>
+                        <span style="font-size: 12px; background: #F1F5F9; padding: 2px 6px; border-radius: 4px;">PostgreSQL</span>
+                    </div>
+                    <p style="font-size: 13px; margin: 0;">Migrate from SQLite to support concurrent incident handling and audit trails.</p>
+                </div>
+
+                <div class="opt-item" style="flex-direction: column; gap: 5px; background: white;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="font-size: 14px;">Vector Scaling</strong>
+                        <span style="font-size: 12px; background: #F1F5F9; padding: 2px 6px; border-radius: 4px;">Pinecone</span>
+                    </div>
+                    <p style="font-size: 13px; margin: 0;">Decouple memory from the container for low-latency retrieval at scale.</p>
+                </div>
+                
+                 <div class="opt-item" style="flex-direction: column; gap: 5px; background: white;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="font-size: 14px;">Deployment</strong>
+                        <span style="font-size: 12px; background: #F1F5F9; padding: 2px 6px; border-radius: 4px;">K8s (EKS)</span>
+                    </div>
+                    <p style="font-size: 13px; margin: 0;">Horizontal pod autoscaling based on incident queue depth.</p>
+                </div>
+            </div>
+
+            <div>
+                <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+                    <i class="fa-solid fa-vial-circle-check" style="color: var(--success);"></i>
+                    <h3 style="margin: 0;">Quality & Reliability</h3>
+                </div>
+
+                <div class="opt-item" style="flex-direction: column; gap: 5px; background: white;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="font-size: 14px;">Regression Pipeline</strong>
+                        <span style="font-size: 12px; background: #ECFDF5; color: #047857; padding: 2px 6px; border-radius: 4px;">evaluate.py</span>
+                    </div>
+                    <p style="font-size: 13px; margin: 0;">Custom "LLM Judge" script that grades agent logs (Pass/Fail) before any code merge.</p>
+                </div>
+
+                <div class="opt-item" style="flex-direction: column; gap: 5px; background: white;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="font-size: 14px;">Accuracy Metrics</strong>
+                        <span style="font-size: 12px; background: #ECFDF5; color: #047857; padding: 2px 6px; border-radius: 4px;">Ragas</span>
+                    </div>
+                    <p style="font-size: 13px; margin: 0;">Tracking "Context Precision" to ensure relevant runbooks are retrieved.</p>
+                </div>
+                
+                <div class="opt-item" style="flex-direction: column; gap: 5px; background: white;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong style="font-size: 14px;">Trace Observability</strong>
+                        <span style="font-size: 12px; background: #ECFDF5; color: #047857; padding: 2px 6px; border-radius: 4px;">Arize Phoenix</span>
+                    </div>
+                    <p style="font-size: 13px; margin: 0;">Visualizing full Chain-of-Thought latency to identify bottlenecks.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <h2 contenteditable="true" style="width: 100%; text-align: left; margin-bottom: 30px;">Next Steps: Pilot Proposal</h2>
+
+        <div class="two-col" style="align-items: flex-start;">
+            <div style="background: #F8FAFC; border: 1px solid var(--border); border-radius: 12px; padding: 30px; height: 100%;">
+                <div style="margin-bottom: 25px;">
+                    <strong style="color: var(--dark); font-size: 14px; text-transform: uppercase;">Phase 1: Shadow Mode</strong>
+                    <p style="font-size: 16px; margin: 5px 0 0 0;" contenteditable="true">Deploy Aether to listen to PagerDuty. It generates reports but does not take action.</p>
+                </div>
+                
+                <div style="margin-bottom: 25px;">
+                    <strong style="color: var(--dark); font-size: 14px; text-transform: uppercase;">Phase 2: Active Assist</strong>
+                    <p style="font-size: 16px; margin: 5px 0 0 0;" contenteditable="true">Aether posts diagnosis to Slack. SREs verify accuracy (RLHF Loop).</p>
+                </div>
+
+                <div style="border-top: 1px solid var(--border); padding-top: 25px;">
+                    <strong style="color: var(--primary); font-size: 14px; text-transform: uppercase;">Success Criteria</strong>
+                    <ul style="margin-top: 15px; font-size: 16px; padding-left: 0; list-style: none;">
+                        <li style="margin-bottom: 10px;"><i class="fa-solid fa-check" style="color: #10B981; margin-right: 10px;"></i> <strong>90% Accurate SQL Generation</strong></li>
+                        <li style="margin-bottom: 10px;"><i class="fa-solid fa-check" style="color: #10B981; margin-right: 10px;"></i> <strong>Zero PII Leaks</strong></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; height: 100%; justify-content: center;">
+                <div style="background: #ECFEFF; padding: 40px; border-radius: 12px; border: 1px solid var(--primary);">
+                    <i class="fa-solid fa-quote-left" style="color: var(--primary); font-size: 32px; margin-bottom: 20px;"></i>
+                    <p style="font-size: 24px; color: var(--text-main); font-weight: 500; font-style: italic; line-height: 1.4;" contenteditable="true">
+                        "For the CTO, this transforms Operations from a <strong style="color: var(--primary-dark);">cost center</strong> into a scalable, self-healing asset."
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="brand-strip"></div>
+        <div class="center-slide" style="height: 100%; display: flex; flex-direction: column;">
+            <h2 contenteditable="true">Strategic Advantages (CEO View)</h2>
+            <p style="margin-bottom: 40px;">Turning Operational Efficiency into Enterprise Value.</p>
+            
+            <div class="card-grid">
+                <div class="card">
+                    <i class="fa-solid fa-database" style="color: var(--secondary); font-size: 32px; margin-bottom: 20px;"></i>
+                    <h3>Data Moats</h3>
+                    <p>Every incident resolved builds a proprietary <strong>Vector Knowledge Base</strong>. Over time, Aether knows our architecture better than any single engineer.</p>
+                </div>
+
+                <div class="card">
+                    <i class="fa-solid fa-arrow-trend-up" style="color: var(--success); font-size: 32px; margin-bottom: 20px;"></i>
+                    <h3>Margin Expansion</h3>
+                    <p>Reducing engineering hours on maintenance directly lowers COGS. This increases <strong>Gross Margins</strong> and valuation multiples.</p>
+                </div>
+
+                <div class="card">
+                    <i class="fa-solid fa-cloud-arrow-up" style="color: var(--primary); font-size: 32px; margin-bottom: 20px;"></i>
+                    <h3>SaaS Transformation</h3>
+                    <p>We are not just fixing bugs; we are building <strong>Internal IP</strong>. This agentic platform can eventually be commercialized as an external product.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container center-slide">
+        <div class="brand-strip"></div>
+        <h1 contenteditable="true" style="font-size: 100px; color: var(--dark); margin-bottom: 20px;">Q&A</h1>
+        <p class="subtitle" style="margin-bottom: 40px;" contenteditable="true">Thank you for your time.</p>
+        <div style="color: var(--text-light); font-size: 20px;" contenteditable="true">
+            Aether &nbsp;&bull;&nbsp; Solutions Engineering Challenge
+        </div>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide-container');
+        const counter = document.getElementById('counter');
+
+        function updateSlide() {
+            slides.forEach((slide, index) => {
+                slide.classList.remove('active');
+                if (index === currentSlide) {
+                    slide.classList.add('active');
+                }
+            });
+            counter.innerText = `${currentSlide + 1} / ${slides.length}`;
+        }
+
+        function nextSlide() {
+            if (currentSlide < slides.length - 1) {
+                currentSlide++;
+                updateSlide();
+            }
+        }
+
+        function prevSlide() {
+            if (currentSlide > 0) {
+                currentSlide--;
+                updateSlide();
+            }
+        }
+
+        document.addEventListener('keydown', function(event) {
+            // Prevent navigation if user is typing in a contenteditable field
+            if (document.activeElement.isContentEditable) return;
+            
+            if(event.key === "ArrowRight") nextSlide();
+            if(event.key === "ArrowLeft") prevSlide();
+        });
+    </script>
+</body>
+</html>
